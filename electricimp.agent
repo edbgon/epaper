@@ -4,7 +4,7 @@ imageNew <- [];
 const DEBUG = 0;
 
 function getLogo(var) {
-    local reqURL = "http://samuelson.no:2634/epaper/epapergen.pl?format=pbm&volt=" + var.tostring();
+    local reqURL = "http://website.no/epaper/epapergen.pl?format=pbm&volt=" + var.tostring();
     local req = http.get(reqURL);
     local incomingDataTable = req.sendsync();
     imageData = incomingDataTable.body;
