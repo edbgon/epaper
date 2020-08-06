@@ -1,0 +1,67 @@
+imageData <- null
+imageNew <- [];
+
+const DEBUG = 0;
+
+function getLogo(var) {
+    local reqURL = "http://samuelson.no:2634/epaper/epapergen.pl?format=pbm&volt=" + var.tostring();
+    local req = http.get(reqURL);
+    local incomingDataTable = req.sendsync();
+    imageData = incomingDataTable.body;
+    
+    if(incomingDataTable.statuscode == 200) {
+        server.log("Length of image data retrieved: " + imageData.len().tostring());
+    }
+    else {
+        server.log("Failed to contact http server, shutting down and trying again later. Errorcode: " + incomingDataTable.statuscode.tostring());
+        device.send("stop", 0);
+        return;
+    }
+
+    local count = 0;
+    local total = 0;
+    local check = 0x0A;
+
+    imageData = imageData.slice(imageData.find(check.tochar(),3)+1); // Strip PBM header (kind of hacky, look for a 0x0A LF)
+
+    server.log("Received start command.");
+    device.send("start",1);
+    
+    for (local i = 0; i < imageData.len()-1; i++) {
+        
+        local temp;
+        local var = imageData[i];
+        
+        // Unpack single bit monochrome file into weird ePaper two pixel format
+        for(local k = 7; k >= 0; k-=2) {
+            local v1 = var & math.pow(2, k).tointeger();
+            local v2 = var & math.pow(2, k-1).tointeger();
+            if(v1 > 0 && v2 > 0) { temp = 0x00; }
+            if(v1 > 0 && v2 == 0) { temp = 0x03; }
+            if(v1 == 0 && v2 > 0) { temp = 0x30; }
+            if(v1 == 0 && v2 == 0) { temp = 0x33; }
+            imageNew.push(temp);
+            count++;
+            total++;
+        }
+        if(count >= 4000) {
+            device.send("push", imageNew);
+            imageNew.clear();
+            count = 0;
+        }
+        
+    }
+    device.send("push", imageNew);
+    imageNew.clear();
+    
+    log("Check reached: " + total.tostring());
+    device.send("stop", 1);
+}
+
+function log(msg) {
+    if(DEBUG) {
+        server.log(msg);
+    }
+}
+
+device.on("ready", getLogo);
