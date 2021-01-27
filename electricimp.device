@@ -1,0 +1,200 @@
+spi1 <- hardware.spi257;
+
+BUSY_PIN <- hardware.pin1;
+RESET_PIN <- hardware.pin8;
+CS_PIN <- hardware.pin2;
+DC_PIN <- hardware.pin9;
+
+BUSY_PIN.configure(DIGITAL_IN);
+RESET_PIN.configure(DIGITAL_OUT); // Reset high to disable reset
+CS_PIN.configure(DIGITAL_OUT); // CS Low to enable
+DC_PIN.configure(DIGITAL_OUT); // 0 = Command, 1 = Data
+
+spi1.configure(SIMPLEX_TX | MSB_FIRST | CLOCK_IDLE_LOW, 2000);
+
+const DEBUG = 1;
+
+const PANEL_SETTING                               = 0x00;
+const POWER_SETTING                               = 0x01;
+const POWER_OFF                                   = 0x02;
+const POWER_OFF_SEQUENCE_SETTING                  = 0x03;
+const POWER_ON                                    = 0x04;
+const POWER_ON_MEASURE                            = 0x05;
+const BOOSTER_SOFT_START                          = 0x06;
+const DEEP_SLEEP                                  = 0x07;
+const DATA_START_TRANSMISSION_1                   = 0x10;
+const DATA_STOP                                   = 0x11;
+const DISPLAY_REFRESH                             = 0x12;
+const IMAGE_PROCESS                               = 0x13;
+const LUT_FOR_VCOM                                = 0x20;
+const LUT_BLUE                                    = 0x21;
+const LUT_WHITE                                   = 0x22;
+const LUT_GRAY_1                                  = 0x23;
+const LUT_GRAY_2                                  = 0x24;
+const LUT_RED_0                                   = 0x25;
+const LUT_RED_1                                   = 0x26;
+const LUT_RED_2                                   = 0x27;
+const LUT_RED_3                                   = 0x28;
+const LUT_XON                                     = 0x29;
+const PLL_CONTROL                                 = 0x30;
+const TEMPERATURE_SENSOR_COMMAND                  = 0x40;
+const TEMPERATURE_CALIBRATION                     = 0x41;
+const TEMPERATURE_SENSOR_WRITE                    = 0x42;
+const TEMPERATURE_SENSOR_READ                     = 0x43;
+const VCOM_AND_DATA_INTERVAL_SETTING              = 0x50;
+const LOW_POWER_DETECTION                         = 0x51;
+const TCON_SETTING                                = 0x60;
+const TCON_RESOLUTION                             = 0x61;
+const SPI_FLASH_CONTROL                           = 0x65;
+const REVISION                                    = 0x70;
+const GET_STATUS                                  = 0x71;
+const AUTO_MEASUREMENT_VCOM                       = 0x80;
+const READ_VCOM_VALUE                             = 0x81;
+const VCM_DC_SETTING                              = 0x82;
+
+function init() {
+    log("Entering init loop.");
+    resetP();
+    log("Pins reset.");
+    sendcmd(POWER_SETTING);
+    senddata(0x37);
+    senddata(0x00);
+
+    log("Power setting sent.");
+    sendcmd(PANEL_SETTING);
+    senddata(0xCF);
+    senddata(0x08);
+
+    log("Panel setting sent.");
+    sendcmd(BOOSTER_SOFT_START);
+    senddata(0xC7);
+    senddata(0xCC);
+    senddata(0x28);
+
+    log("Soft start finished.");
+    sendcmd(POWER_ON);
+    log("Power on command made. Waiting for busy signal to resolve.");
+    wait_until_idle();
+
+    log("Busy signal resolved.");
+    sendcmd(PLL_CONTROL);
+    senddata(0x3C);
+
+    log("PLL Control Finished");
+    sendcmd(TEMPERATURE_CALIBRATION);
+    senddata(0x00);
+
+    log("Temperature calibration finished.");
+    sendcmd(VCOM_AND_DATA_INTERVAL_SETTING);
+    senddata(0x77);
+
+    sendcmd(TCON_SETTING);
+    senddata(0x22);
+
+    sendcmd(TCON_RESOLUTION);
+    senddata(0x02); #source 640
+    senddata(0x80);
+    senddata(0x01); #gate 384
+    senddata(0x80);
+
+    sendcmd(VCM_DC_SETTING);
+    senddata(0x1E); #decide by LUT file
+
+    sendcmd(0xE5); #FLASH MODE
+    senddata(0x03);
+    log("Init complete.");
+}
+
+function wait_until_idle() {
+    while(BUSY_PIN.read() == 0) {
+        imp.sleep(0.5);
+    }
+}
+
+function resetP() {
+    CS_PIN.write(1);
+    RESET_PIN.write(0);
+    imp.sleep(0.2);
+    RESET_PIN.write(1);
+    CS_PIN.write(0);
+    imp.sleep(0.2);
+}
+
+function senddata(data) {
+    DC_PIN.write(1);
+    spi1.write(format("%c",data));
+}
+
+function sendcmd(data) {
+    log("Sending command: " + format("%X",data));
+    DC_PIN.write(0);
+    spi1.write(format("%c",data));
+}
+
+function sleep() {
+    sendcmd(POWER_OFF);
+    wait_until_idle();
+    sendcmd(DEEP_SLEEP);
+    senddata(0xA5);
+}
+
+function log(msg) {
+    if(DEBUG) {
+        server.log(msg);
+    }
+}
+
+function test_pattern() {
+    sendcmd(DATA_START_TRANSMISSION_1);
+    log("Sending data.");
+    for(local i = 0; i < 384; i++) {
+        local xmit = 0x33;
+        if(i % 2 == 0) {
+            xmit = 0x03;
+        }
+        for(local j = 0; j < 320; j++) {
+            senddata(xmit);
+        }
+    }
+    sendcmd(DISPLAY_REFRESH);
+    imp.sleep(0.1);
+    log("Before idle.");
+    wait_until_idle();
+    log("After idle.");
+}
+
+function startimg(var) {
+    sendcmd(DATA_START_TRANSMISSION_1);
+    log("Starting transmission, asking for data.");
+}
+
+function loadline(data) {
+    //log("Sending block...");
+    DC_PIN.write(1);
+    for(local i = 0; i < data.len(); i++) {
+        spi1.write(format("%c",data[i]));
+    }
+}
+
+function stopimg(var) {
+    if(var == 1) { sendcmd(DISPLAY_REFRESH); }
+    imp.sleep(0.1);
+    log("Done transmitting data.");
+    if(var == 1) { wait_until_idle(); }
+    server.log("Going to sleep. Waking in 7200s.");
+    sleep();
+    server.sleepfor(7200);
+}
+
+function startitup() {
+    init();
+    local volt = hardware.voltage();
+    agent.send("ready", volt);
+}
+
+agent.on("start", startimg);
+agent.on("push", loadline);
+agent.on("stop", stopimg);
+
+server.log("Booting e-paper screen. ERSA");
+startitup();
