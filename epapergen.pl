@@ -224,7 +224,7 @@ for(@{$json->{'properties'}->{'timeseries'}}) {
 	# Minimum air temperature for the day
 	my $airmin = $_->{'data'}->{'next_6_hours'}->{'details'}->{'air_temperature_min'};
 	if($airmin) {
-		$airmin = sprintf("%0.1f", $airmin);
+		$airmin = sprintf("%.0f", $airmin);
 		if($airmin <= $mintemps[$mday]) {
 			$mintemps[$mday] = $airmin;
 		}
@@ -233,7 +233,7 @@ for(@{$json->{'properties'}->{'timeseries'}}) {
 	# Maximum air temperature for the day
 	my $airmax = $_->{'data'}->{'next_6_hours'}->{'details'}->{'air_temperature_max'};
 	if($airmax) {
-		$airmax = sprintf("%0.1f", $airmax);
+		$airmax = sprintf("%.0f", $airmax);
 		if($airmax >= $maxtemps[$mday]) {
 			$maxtemps[$mday] = $airmax;
 		}
