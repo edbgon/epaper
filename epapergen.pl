@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 use Image::Magick;
-use LWP::Simple;
+use LWP::Simple qw($ua get getstore);
 
 use DateTime;
 use DateTime::Event::Sunrise;
@@ -14,6 +14,8 @@ use JSON qw( decode_json );
 use DBI;
 
 # Retrieve GET variables
+$ua->timeout(2);
+
 $q = new CGI;
 my $volt = $q->param('volt');
 my $format = $q->param('format');
